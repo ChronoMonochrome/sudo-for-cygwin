@@ -29,7 +29,7 @@ def readn(sock, n):
         n -= len(s)
     if n > 0:
         raise PartialRead('EOF while reading')
-    return ''.join(d)
+    return b''.join(d)
 
 def read_command(sock):
     length = struct.unpack('I', readn(sock, 4))[0]
@@ -39,13 +39,13 @@ def child(cmdline, cwd, winsize, env):
     try:
         os.chdir(cwd)
         fcntl.ioctl(0, termios.TIOCSWINSZ, winsize)
-        envdict = dict(line.split('=', 1) for line in env.split('\0'))
+        envdict = dict(line.split(b'=', 1) for line in env.split(b'\0'))
         envdict['ELEVATED_SHELL'] = '1'
         if not cmdline:
             shell = envdict.get('SHELL', '/bin/bash')
             os.execvpe(shell, (shell, '-i'), envdict)
         else:
-            argv = cmdline.split('\0')
+            argv = cmdline.split(b'\0')
             os.execvpe(argv[0], argv, envdict)
     except:
         traceback.print_exc()
@@ -56,11 +56,11 @@ def try_read(fd, size):
     try:
         return os.read(fd, size)
     except:
-        return ''
+        return b''
 
 def pty_read_loop(master, sock):
     try:
-        for chunk in iter(lambda: try_read(master, 8192), ''):
+        for chunk in iter(lambda: try_read(master, 8192*1024), b''):
             sock.sendall(chunk)
         sock.shutdown(socket.SHUT_WR)
     except Exception as e:
@@ -78,7 +78,7 @@ def sock_read_loop(sock, master, pid):
                 os.kill(pid, signal.SIGWINCH)
     except Exception as e:
         if isinstance(e, PartialRead):
-            print 'FIN received'
+            print('FIN received')
         else:
             traceback.print_exc()
 
@@ -92,7 +92,7 @@ def request_handler(conn, server):
             server.close()
             child(*child_args)
 
-        with os.fdopen(master, 'r+') as masterfile:
+        with os.fdopen(master, 'rb') as masterfile:
             pool = eventlet.GreenPool()
             pool.spawn_n(pty_read_loop, master, conn)
             pool.spawn_n(sock_read_loop, conn, master, pid)
@@ -100,7 +100,7 @@ def request_handler(conn, server):
     except Exception as ex:
         traceback.print_exc()
     finally:
-        print 'Closing connection'
+        print('Closing connection')
         conn.close()
 
 def handle_sigchild(n, f):
@@ -119,7 +119,7 @@ def main():
     signal.signal(signal.SIGCHLD, handle_sigchild)
     while True:
         conn, acc = server.accept()
-        print 'Accepted connection from %r' % (acc,)
+        print('Accepted connection from %r' % (acc,))
         eventlet.spawn_n(request_handler, conn, server)
 
 def cygwin_hide_console_window():
